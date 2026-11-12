@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Room Booking Automation Panel</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: #f4f4f9; }
+    .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 650px; margin-bottom: 1.5rem; }
+    pre { background: #eee; padding: 1rem; border-radius: 4px; overflow-x: auto; max-height: 250px; }
+    input, button { margin-bottom: 0.5rem; display: block; padding: 0.5rem; width: 100%; box-sizing: border-box; }
+    button { background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button.logout { background: #cc0000; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 0.9rem; }
+    th { background-color: #f2f2f2; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN CARD -->
+  <div id="loginCard" class="card">
+    <h2>Dashboard Access</h2>
+    <form id="loginForm" onsubmit="handleLogin(event)">
+      <input type="password" id="adminPassword" placeholder="Dashboard Password (default: admin123)" required />
+      <button type="submit" id="loginBtn">Unlock Dashboard</button>
+    </form>
+    <p id="loginError" style="color: red; margin-top: 0.5rem;"></p>
+  </div>
+
+  <!-- CONTROL PANEL -->
+  <div id="panelCard" class="card hidden">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h2>Booking Automation Manager</h2>
+      <button class="logout" id="logoutBtn" style="width: auto; padding: 0.4rem 1rem;" onclick="handleLogout()">Lock</button>
+    </div>
+
+    <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #ddd;" />
+
+    <h3>1. Manage University Accounts</h3>
+    <p style="font-size: 0.85rem; color: #555;">Add accounts here. The system will automatically split bookings across them to bypass the 4-hour daily per-account limit.</p>
+    <form id="accountForm" onsubmit="handleAddAccount(event)">
+      <input type="text" id="accUsername" placeholder="University Username / Email" required />
+      <input type="password" id="accPassword" placeholder="University Password" required />
+      <button type="submit">Add / Update Account</button>
+    </form>
+    <table id="accountsTable">
+      <thead>
+        <tr><th>Registered Accounts</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #ddd;" />
+
+    <h3>2. Upload Booking JSON File</h3>
+    <p style="font-size: 0.85rem; color: #555;">Uses your standard JSON structure: <code>{"mm/dd/yyyy": ["hh:mm", "mm/dd/yyyy", "hh:mm", "roomname", "title"]}</code></p>
+    <form id="uploadForm" onsubmit="handleUpload(event)">
+      <input type="file" id="jsonFile" accept=".json" required />
+      <button type="submit">Upload & Auto-Schedule</button>
+    </form>
+    <p id="uploadMsg" style="color: green; font-size: 0.9rem;"></p>
+
+    <h3>Current Active Queue & Account Distribution</h3>
+    <pre id="jsonPreview">Loading...</pre>
+  </div>
+
+  <script>
+    async function checkSession() {
+      try {
+        const res = await fetch('/api/session');
+        const data = await res.json();
+        if (data.loggedIn) {
+          document.getElementById('loginCard').classList.add('hidden');
+          document.getElementById('panelCard').classList.remove('hidden');
+          loadData();
+        } else {
+          document.getElementById('loginCard').classList.remove('hidden');
+          document.getElementById('panelCard').classList.add('hidden');
+        }
+      } catch (err) {
+        console.error("Session check failed:", err);
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const password = document.getElementById('adminPassword').value;
+      const errorEl = document.getElementById('loginError');
+      errorEl.textContent = "";
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        
+        if (res.ok) {
+          document.getElementById('adminPassword').value = '';
+          checkSession();
+        } else {
+          const errData = await res.json();
+          errorEl.textContent = errData.error || "Incorrect password.";
+        }
+      } catch (err) {
+        errorEl.textContent = "Network error connecting to server.";
+        console.error(err);
+      }
+    }
+
+    async function handleLogout() {
+      try {
+        await fetch('/api/logout', { method: 'POST' });
+        checkSession();
+      } catch (err) {
+        console.error("Logout failed:", err);
+      }
+    }
+
+    async function loadData() {
+      try {
+        // Load Accounts
+        const accRes = await fetch('/api/accounts');
+        if (accRes.ok) {
+          const accounts = await accRes.json();
+          const tbody = document.querySelector('#accountsTable tbody');
+          tbody.innerHTML = '';
+          const users = Object.keys(accounts);
+          if (users.length === 0) {
+            tbody.innerHTML = '<tr><td>No accounts added yet.</td></tr>';
+          } else {
+            users.forEach(u => {
+              tbody.innerHTML += `<tr><td>${u}</td></tr>`;
+            });
+          }
+        }
+
+        // Load Bookings Queue
+        const bookRes = await fetch('/api/bookings');
+        if (bookRes.ok) {
+          const data = await bookRes.json();
+          document.getElementById('jsonPreview').textContent = JSON.stringify(data, null, 2);
+        }
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      }
+    }
+
+    async function handleAddAccount(e) {
+      e.preventDefault();
+      const username = document.getElementById('accUsername').value;
+      const password = document.getElementById('accPassword').value;
+
+      try {
+        const res = await fetch('/api/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        if (res.ok) {
+          document.getElementById('accUsername').value = '';
+          document.getElementById('accPassword').value = '';
+          loadData();
+          alert('Account added successfully!');
+        } else {
+          alert('Failed to save account.');
+        }
+      } catch (err) {
+        alert('Network error saving account.');
+      }
+    }
+
+    async function handleUpload(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('jsonFile');
+      if (!fileInput.files[0]) return;
+
+      const formData = new FormData();
+      formData.append('bookingFile', fileInput.files[0]);
+
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (res.ok) {
+          document.getElementById('uploadMsg').textContent = "File processed, balanced across accounts, and scheduled!";
+          loadData();
+        } else {
+          const err = await res.json();
+          alert(err.error || "Upload failed.");
+        }
+      } catch (err) {
+        alert('Network error during upload.');
+      }
+    }
+
+    // Run initial check on page load
+    checkSession();
+  </script>
+</body>
+</html>

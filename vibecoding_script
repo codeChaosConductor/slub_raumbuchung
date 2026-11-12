@@ -1,0 +1,281 @@
+//anmeldung
+//initialURL = 
+
+document.getElementsByClassName('btn btn-large btn-primary btn-block')[0].click();
+document.getElementById('txtUsername').value = 'email';
+document.getElementById('txtPassword').value = 'pw';
+document.getElementById('btnLogin').click();
+
+
+//umstellen auf Zentralbibliothek
+const selectElement1 = document.getElementById('schedules');
+selectElement1.value = "1";
+selectElement1.dispatchEvent(new Event('change', { bubbles: true }));
+
+//umstellen auf 1 Tages Ansicht
+const selectElement2 = document.getElementById('visible-days-select');
+selectElement2.value = "1";
+selectElement2.dispatchEvent(new Event('change', { bubbles: true }));
+
+// wochenansicht auswählen
+document.getElementsByClassName('dropdown-item schedule-style')[4].click();
+
+
+
+
+
+// select schulungsraum and make new reservation
+function clickReservationByRoom(roomNumber) {
+  // Select all table rows with the class 'slots'
+  const rows = document.querySelectorAll('tr.slots');
+  
+  for (const row of rows) {
+    const resourceNameEl = row.querySelector('.resourcename');
+    
+    // Check if the row contains the target room name/number
+    if (resourceNameEl && resourceNameEl.textContent.trim().includes(roomNumber)) {
+      // Find the "New Reservation" clickable button inside that row
+      const reservationButton = row.querySelector('.reservable');
+      
+      if (reservationButton) {
+        reservationButton.click();
+        console.log(`Successfully clicked reservation for: ${roomNumber}`);
+        return true;
+      }
+    }
+  }
+  
+  console.warn(`Room "${roomNumber}" could not be found.`);
+  return false;
+}
+// Example usage:
+clickReservationByRoom("Gruppenraum 0.43");
+
+
+
+
+
+
+// fill out reservation form
+(async () => {
+  const title = 'Nachbereitung Klausur';
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function forceSetInputValue(selectorOrId, value, options = {}) {
+    const el = document.getElementById(selectorOrId) || 
+               document.getElementById(selectorOrId.replace('#', '')) || 
+               document.querySelector(selectorOrId);
+    
+    if (!el) {
+      console.warn(`Element "${selectorOrId}" not found.`);
+      return false;
+    }
+
+    // 1. Scroll into view and simulate focus
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await wait(50);
+    
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    el.focus();
+    await wait(50);
+
+    // 2. Determine prototype
+    const tagName = el.tagName.toLowerCase();
+    let proto = window.HTMLInputElement.prototype;
+    if (tagName === 'textarea') {
+      proto = window.HTMLTextAreaElement.prototype;
+    } else if (tagName === 'select') {
+      proto = window.HTMLSelectElement.prototype;
+    }
+
+    // 3. Bypass React's value tracker so it recognizes the programmatic change
+    const tracker = el._valueTracker;
+    if (tracker) {
+      tracker.setValue(''); 
+    }
+
+    // 4. Set value using native prototype descriptor setter
+    const nativeValueSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (nativeValueSetter) {
+      nativeValueSetter.call(el, value);
+    } else {
+      el.value = value;
+    }
+
+    // 5. Dispatch rigorous event sequence
+    el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: value }));
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: value }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // 6. Handle combobox vs standard blur/validation triggers (Restored original version)
+    const isCombobox = el.getAttribute('role') === 'combobox' || options.combobox || tagName === 'select';
+    
+    if (isCombobox) {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true }));
+      await wait(50);
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+    } else {
+      // Trigger blur + focusout to force form validation plugins to mark the field as touched/valid
+      el.blur();
+      el.dispatchEvent(new FocusEvent('focusout', { bubbles: true, cancelable: true }));
+    }
+
+    console.log(`Successfully forced value on "${selectorOrId}" to: "${value}"`);
+    return true;
+  }
+
+  const titleElementId = 'reservation-title';
+  const verwendungszweckElementId = Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('Verwendungszweck'))?.getAttribute('for');
+  const personenanzahlElementId = Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('Personenanzahl'))?.getAttribute('for');
+
+  // 1. Set Title
+  await forceSetInputValue(titleElementId, title);
+  await wait(300);
+
+  // 2. Set Verwendungszweck (Textarea)
+  if (verwendungszweckElementId) {
+    await forceSetInputValue(verwendungszweckElementId, title);
+    await wait(300);
+  } else {
+    console.warn('Verwendungszweck element not found.');
+  }
+
+  // 3. Set Personenanzahl (Using earliest combobox logic)
+  if (personenanzahlElementId) {
+    await forceSetInputValue(personenanzahlElementId, '6', { combobox: true });
+    await wait(300);
+  }
+
+  // 4. Set Description
+  const descEl = document.getElementById('reservation-description');
+  if (descEl) {
+    await forceSetInputValue('reservation-description', title);
+    await wait(300);
+  }
+
+  // 5. Click Terms Checkbox last
+  const termsCheckbox = document.getElementById('reservation-terms-checkbox');
+  if (termsCheckbox) {
+    termsCheckbox.click();
+    await wait(300);
+  } else {
+    console.warn('Terms checkbox not found.');
+  }
+
+  console.log('Form filling sequence completed.');
+})();
+
+
+
+
+// set start and ending time and date of booking
+async function setReservationSchedule(startDate, startTime, endDate, endTime) {
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function forceSetInputValue(selectorOrId, value, options = {}) {
+    const el = document.getElementById(selectorOrId) || 
+               document.getElementById(selectorOrId.replace('#', '')) || 
+               document.querySelector(selectorOrId);
+    
+    if (!el) {
+      console.warn(`Element "${selectorOrId}" not found.`);
+      return false;
+    }
+
+    // 1. Scroll into view and simulate focus
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await wait(50);
+    // Example usage:
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    el.focus();
+    await wait(50);
+
+    // 2. Determine prototype
+    const tagName = el.tagName.toLowerCase();
+    let proto = window.HTMLInputElement.prototype;
+    if (tagName === 'textarea') {
+      proto = window.HTMLTextAreaElement.prototype;
+    } else if (tagName === 'select') {
+      proto = window.HTMLSelectElement.prototype;
+    }
+
+    // 3. Bypass React's value tracker so it recognizes the programmatic change
+    const tracker = el._valueTracker;
+    if (tracker) {
+      tracker.setValue(''); 
+    }
+
+    // 4. Set value using native prototype descriptor setter
+    const nativeValueSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (nativeValueSetter) {
+      nativeValueSetter.call(el, value);
+    } else {
+      el.value = value;
+    }
+
+    // 5. Dispatch rigorous event sequence
+    el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: value }));
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: value }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // 6. Handle combobox/select vs standard blur/validation triggers
+    const isCombobox = el.getAttribute('role') === 'combobox' || options.combobox || tagName === 'select';
+    
+    if (isCombobox) {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', bubbles: true }));
+      await wait(50);
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+    } else {
+      // Trigger blur + focusout to force form validation plugins to mark the field as touched/valid
+      el.blur();
+      el.dispatchEvent(new FocusEvent('focusout', { bubbles: true, cancelable: true }));
+    }
+
+    console.log(`Successfully forced value on "${selectorOrId}" to: "${value}"`);
+    return true;
+  }
+
+  // 1. Start Date
+  if (startDate) {
+    await forceSetInputValue('reservation-start-date', startDate);
+    await wait(300);
+  }
+
+  // 2. Start Time
+  if (startTime) {
+    await forceSetInputValue('reservation-start-time', startTime, { combobox: true });
+    await wait(300);
+  }
+
+  // 3. End Date
+  if (endDate) {
+    await forceSetInputValue('reservation-end-date', endDate);
+    await wait(300);
+  }
+
+  // 4. End Time
+  if (endTime) {
+    await forceSetInputValue('reservation-end-time', endTime, { combobox: true });
+    await wait(300);
+  }
+
+  console.log('Schedule filling sequence completed.');
+}
+
+await setReservationSchedule('11/10/2026', '15:00', '11/10/2026', '16:00');
+
+
+// book room (over button click())
+document.getElementsByClassName('btn btn-primary')[0].click();
+
+// check for warning after booking
+document.getElementsByClassName('btn btn-warning')[0] != null
+
+// push button to return to booking form (still filled out)
+document.getElementsByClassName('btn btn-warning')[0].click();

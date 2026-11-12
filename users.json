@@ -1,0 +1,12 @@
+{
+  "admin": {
+    "passwordHash": "$2a$10$Xm57C640s8WkF5.dD4j9sO6lDkH9.k5jQ8tXzQ0cWv8x8w3l7cI5G",
+    "bookingUser": "university_username_1",
+    "bookingPass": "university_password_1"
+  },
+  "student2": {
+    "passwordHash": "$2a$10$Xm57C640s8WkF5.dD4j9sO6lDkH9.k5jQ8tXzQ0cWv8x8w3l7cI5G",
+    "bookingUser": "university_username_2",
+    "bookingPass": "university_password_2"
+  }
+}
